@@ -29,6 +29,7 @@ import { SecurityOptions } from 'components/interfaces/ProjectCreation/SecurityO
 import DefaultLayout from 'components/layouts/DefaultLayout'
 import { WizardLayoutWithoutAuth } from 'components/layouts/WizardLayout'
 import Panel from 'components/ui/Panel'
+import { FormItemLayout } from 'ui-patterns/form/FormItemLayout/FormItemLayout'
 import { useAvailableOrioleImageVersion } from 'data/config/project-creation-postgres-versions-query'
 import { useOverdueInvoicesQuery } from 'data/invoices/invoices-overdue-query'
 import { useDefaultRegionQuery } from 'data/misc/get-default-region-query'
@@ -42,6 +43,7 @@ import {
   ProjectCreateVariables,
   useProjectCreateMutation,
 } from 'data/projects/project-create-mutation'
+import { useProjectImportMutation } from 'data/projects/project-import-mutation'
 import { useCustomContent } from 'hooks/custom-content/useCustomContent'
 import { useAsyncCheckPermissions } from 'hooks/misc/useCheckPermissions'
 import { useDataApiGrantTogglesEnabled } from 'hooks/misc/useDataApiGrantTogglesEnabled'
@@ -62,7 +64,19 @@ import { useForm } from 'react-hook-form'
 import { AWS_REGIONS, type CloudProvider } from 'shared-data'
 import { toast } from 'sonner'
 import type { NextPageWithLayout } from 'types'
-import { Button, Form_Shadcn_, FormField_Shadcn_, useWatch_Shadcn_ } from 'ui'
+import {
+  Button,
+  Form_Shadcn_,
+  FormControl_Shadcn_,
+  FormField_Shadcn_,
+  Input_Shadcn_,
+  Select_Shadcn_,
+  SelectContent_Shadcn_,
+  SelectItem_Shadcn_,
+  SelectTrigger_Shadcn_,
+  SelectValue_Shadcn_,
+  useWatch_Shadcn_,
+} from 'ui'
 import { Admonition } from 'ui-patterns/admonition'
 import ConfirmationModal from 'ui-patterns/Dialogs/ConfirmationModal'
 import { z } from 'zod'
@@ -136,6 +150,11 @@ const Wizard: NextPageWithLayout = () => {
       enableRlsEventTrigger: false,
       postgresVersionSelection: '',
       useOrioleDb: false,
+      setupMode: 'blank',
+      sourceUrl: '',
+      serviceRoleKey: '',
+      importDbConnectionString: '',
+      managementApiToken: '',
     },
   })
   const {
@@ -144,6 +163,7 @@ const Wizard: NextPageWithLayout = () => {
     dbRegion,
     organization,
     highAvailability,
+    setupMode,
   } = useWatch_Shadcn_({ control: form.control })
 
   // [Charis] Since the form is updated in a useEffect, there is an edge case
@@ -277,7 +297,22 @@ const Wizard: NextPageWithLayout = () => {
     },
   })
 
+  const {
+    mutate: importProject,
+    isPending: isImportingProject,
+    isSuccess: isImportSuccess,
+  } = useProjectImportMutation({
+    onSuccess: (res) => {
+      router.push(`/project/${res.ref}/import?jobId=${res.import_job_id ?? ''}`)
+    },
+  })
+
   const onSubmitWithComputeCostsConfirmation = async (values: z.infer<typeof FormSchema>) => {
+    if (values.setupMode === 'import') {
+      await onSubmit(values)
+      return
+    }
+
     const launchingLargerInstance =
       values.instanceSize &&
       !sizesWithNoCostConfirmationRequired.includes(values.instanceSize as DesiredInstanceSize)
@@ -307,7 +342,24 @@ const Wizard: NextPageWithLayout = () => {
       enableRlsEventTrigger,
       postgresVersionSelection,
       useOrioleDb,
+      setupMode,
+      sourceUrl,
+      serviceRoleKey,
+      importDbConnectionString,
+      managementApiToken,
     } = values
+
+    if (setupMode === 'import') {
+      importProject({
+        name: projectName,
+        organizationSlug: currentOrg.slug,
+        sourceUrl,
+        serviceRoleKey,
+        dbConnectionString: importDbConnectionString,
+        managementApiToken,
+      })
+      return
+    }
 
     if (useOrioleDb && !availableOrioleVersion) {
       return toast.error('No available OrioleDB image found, only Postgres is available')
@@ -411,6 +463,9 @@ const Wizard: NextPageWithLayout = () => {
     }
   }, [instanceSize, watchedInstanceSize, form])
 
+  const isSubmittingProject = isCreatingNewProject || isImportingProject
+  const isProjectSubmitSuccess = isSuccessNewProject || isImportSuccess
+
   return (
     <>
       {/* Wizard layouts set the visual header but not the browser tab title. */}
@@ -437,8 +492,8 @@ const Wizard: NextPageWithLayout = () => {
                 canCreateProject={canCreateProject}
                 instanceSize={instanceSize}
                 organizationProjects={organizationProjects}
-                isCreatingNewProject={isCreatingNewProject}
-                isSuccessNewProject={isSuccessNewProject}
+                isCreatingNewProject={isSubmittingProject}
+                isSuccessNewProject={isProjectSubmitSuccess}
               />
             }
           >
@@ -451,63 +506,201 @@ const Wizard: NextPageWithLayout = () => {
 
                   {canCreateProject && (
                     <>
-                      <ProjectNameInput form={form} />
-                      <HighAvailabilityInput form={form} />
-
-                      {cloudProviderEnabled && showNonProdFields && (
-                        <CloudProviderSelector form={form} />
-                      )}
-
-                      {canChooseInstanceSize && <ComputeSizeSelector form={form} />}
-
-                      <DatabasePasswordInput form={form} />
-
-                      <RegionSelector
-                        form={form}
-                        instanceSize={instanceSize as DesiredInstanceSize}
-                      />
-
-                      {showPostgresVersionSelector && (
-                        <Panel.Content>
-                          <FormField_Shadcn_
-                            control={form.control}
-                            name="postgresVersionSelection"
-                            render={({ field }) => (
-                              <PostgresVersionSelector
-                                field={field}
-                                form={form}
-                                cloudProvider={form.getValues('cloudProvider') as CloudProvider}
-                                organizationSlug={slug}
-                                dbRegion={form.getValues('dbRegion')}
-                              />
-                            )}
-                          />
-                        </Panel.Content>
-                      )}
-
-                      {showNonProdFields && <CustomPostgresVersionInput form={form} />}
-
-                      <SecurityOptions form={form} />
-                      {showAdvancedConfig && !!availableOrioleVersion && (
-                        <AdvancedConfiguration form={form} />
-                      )}
-
-                      {shouldShowFreeProjectInfo ? (
-                        <Admonition
-                          className="rounded-none border-0 border-t"
-                          type="note"
-                          title="Need a free project?"
-                          description={
-                            <p>
-                              You can have up to 2 free projects across all organizations.{' '}
-                              <Link className="underline text-foreground" href="/new">
-                                Create a free organization
-                              </Link>{' '}
-                              to use them.
-                            </p>
-                          }
+                      <Panel.Content>
+                        <FormField_Shadcn_
+                          control={form.control}
+                          name="setupMode"
+                          render={({ field }) => (
+                            <FormItemLayout
+                              label="Setup mode"
+                              layout="horizontal"
+                              description="Choose whether to create a blank project or import an existing Supabase project."
+                            >
+                              <FormControl_Shadcn_>
+                                <Select_Shadcn_ value={field.value} onValueChange={field.onChange}>
+                                  <SelectTrigger_Shadcn_ className="w-full">
+                                    <SelectValue_Shadcn_ />
+                                  </SelectTrigger_Shadcn_>
+                                  <SelectContent_Shadcn_>
+                                    <SelectItem_Shadcn_ value="blank">Blank project</SelectItem_Shadcn_>
+                                    <SelectItem_Shadcn_ value="import">
+                                      Import existing Supabase project
+                                    </SelectItem_Shadcn_>
+                                  </SelectContent_Shadcn_>
+                                </Select_Shadcn_>
+                              </FormControl_Shadcn_>
+                            </FormItemLayout>
+                          )}
                         />
-                      ) : null}
+                      </Panel.Content>
+
+                      <ProjectNameInput form={form} />
+
+                      {setupMode === 'blank' ? (
+                        <>
+                          <HighAvailabilityInput form={form} />
+
+                          {cloudProviderEnabled && showNonProdFields && (
+                            <CloudProviderSelector form={form} />
+                          )}
+
+                          {canChooseInstanceSize && <ComputeSizeSelector form={form} />}
+
+                          <DatabasePasswordInput form={form} />
+
+                          <RegionSelector
+                            form={form}
+                            instanceSize={instanceSize as DesiredInstanceSize}
+                          />
+
+                          {showPostgresVersionSelector && (
+                            <Panel.Content>
+                              <FormField_Shadcn_
+                                control={form.control}
+                                name="postgresVersionSelection"
+                                render={({ field }) => (
+                                  <PostgresVersionSelector
+                                    field={field}
+                                    form={form}
+                                    cloudProvider={form.getValues('cloudProvider') as CloudProvider}
+                                    organizationSlug={slug}
+                                    dbRegion={form.getValues('dbRegion')}
+                                  />
+                                )}
+                              />
+                            </Panel.Content>
+                          )}
+
+                          {showNonProdFields && <CustomPostgresVersionInput form={form} />}
+
+                          <SecurityOptions form={form} />
+                          {showAdvancedConfig && !!availableOrioleVersion && (
+                            <AdvancedConfiguration form={form} />
+                          )}
+
+                          {shouldShowFreeProjectInfo ? (
+                            <Admonition
+                              className="rounded-none border-0 border-t"
+                              type="note"
+                              title="Need a free project?"
+                              description={
+                                <p>
+                                  You can have up to 2 free projects across all organizations.{' '}
+                                  <Link className="underline text-foreground" href="/new">
+                                    Create a free organization
+                                  </Link>{' '}
+                                  to use them.
+                                </p>
+                              }
+                            />
+                          ) : null}
+                        </>
+                      ) : (
+                        <>
+                          <Panel.Content>
+                            <Admonition
+                              type="note"
+                              title="Import an existing project"
+                              description="Create a new project in this fork and attach an import job that replays the remote Supabase project into your self-hosted environment."
+                            />
+                          </Panel.Content>
+
+                          <Panel.Content>
+                            <FormField_Shadcn_
+                              control={form.control}
+                              name="sourceUrl"
+                              render={({ field, fieldState }) => (
+                                <FormItemLayout
+                                  label="Source URL"
+                                  layout="horizontal"
+                                  description="The HTTPS project URL for the source Supabase project."
+                                  error={fieldState.error?.message}
+                                >
+                                  <FormControl_Shadcn_>
+                                    <Input_Shadcn_
+                                      {...field}
+                                      autoComplete="off"
+                                      placeholder="https://your-project-ref.supabase.co"
+                                    />
+                                  </FormControl_Shadcn_>
+                                </FormItemLayout>
+                              )}
+                            />
+                          </Panel.Content>
+
+                          <Panel.Content>
+                            <FormField_Shadcn_
+                              control={form.control}
+                              name="serviceRoleKey"
+                              render={({ field, fieldState }) => (
+                                <FormItemLayout
+                                  label="Service role key"
+                                  layout="horizontal"
+                                  description="Used to inspect privileged resources during the import."
+                                  error={fieldState.error?.message}
+                                >
+                                  <FormControl_Shadcn_>
+                                    <Input_Shadcn_
+                                      {...field}
+                                      autoComplete="off"
+                                      type="password"
+                                      placeholder="service_role key"
+                                    />
+                                  </FormControl_Shadcn_>
+                                </FormItemLayout>
+                              )}
+                            />
+                          </Panel.Content>
+
+                          <Panel.Content>
+                            <FormField_Shadcn_
+                              control={form.control}
+                              name="importDbConnectionString"
+                              render={({ field, fieldState }) => (
+                                <FormItemLayout
+                                  label="DB connection string"
+                                  layout="horizontal"
+                                  description="Use the Supabase session pooler connection string for the source project."
+                                  error={fieldState.error?.message}
+                                >
+                                  <FormControl_Shadcn_>
+                                    <Input_Shadcn_
+                                      {...field}
+                                      autoComplete="off"
+                                      type="password"
+                                      placeholder="postgresql://..."
+                                    />
+                                  </FormControl_Shadcn_>
+                                </FormItemLayout>
+                              )}
+                            />
+                          </Panel.Content>
+
+                          <Panel.Content>
+                            <FormField_Shadcn_
+                              control={form.control}
+                              name="managementApiToken"
+                              render={({ field, fieldState }) => (
+                                <FormItemLayout
+                                  label="Management API token"
+                                  layout="horizontal"
+                                  description="Used to read source project metadata and import status."
+                                  error={fieldState.error?.message}
+                                >
+                                  <FormControl_Shadcn_>
+                                    <Input_Shadcn_
+                                      {...field}
+                                      autoComplete="off"
+                                      type="password"
+                                      placeholder="sbp_..."
+                                    />
+                                  </FormControl_Shadcn_>
+                                </FormItemLayout>
+                              )}
+                            />
+                          </Panel.Content>
+                        </>
+                      )}
                     </>
                   )}
 

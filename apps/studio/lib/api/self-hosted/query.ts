@@ -24,8 +24,14 @@ export async function executeQuery<T = unknown>({
 }: QueryOptions): Promise<WrappedResult<T[]>> {
   assertSelfHosted()
 
-  const connectionString = getConnectionString({ readOnly })
-  const connectionStringEncrypted = encryptString(connectionString)
+  const incomingConnectionStringEncrypted =
+    headers instanceof Headers
+      ? headers.get('x-connection-encrypted')
+      : Array.isArray((headers as any)?.['x-connection-encrypted'])
+        ? (headers as any)['x-connection-encrypted'][0]
+        : (headers as any)?.['x-connection-encrypted']
+  const connectionStringEncrypted =
+    incomingConnectionStringEncrypted ?? encryptString(getConnectionString({ readOnly }))
 
   const requestBody: { query: string; parameters?: unknown[] } = { query }
   if (parameters !== undefined) {

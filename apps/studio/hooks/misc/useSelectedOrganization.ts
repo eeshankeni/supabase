@@ -1,6 +1,7 @@
 import { useIsLoggedIn, useParams } from 'common'
 import { useOrganizationsQuery } from 'data/organizations/organizations-query'
 import { useProjectDetailQuery } from 'data/projects/project-detail-query'
+import { IS_PLATFORM } from 'lib/constants'
 
 export function useSelectedOrganizationQuery({ enabled = true } = {}) {
   const isLoggedIn = useIsLoggedIn()
@@ -9,7 +10,7 @@ export function useSelectedOrganizationQuery({ enabled = true } = {}) {
   const { data: selectedProject } = useProjectDetailQuery({ ref })
 
   return useOrganizationsQuery({
-    enabled: isLoggedIn && enabled,
+    enabled: (isLoggedIn || !IS_PLATFORM) && enabled,
     select: (data) => {
       return data.find((org) => {
         if (slug !== undefined) return org.slug === slug

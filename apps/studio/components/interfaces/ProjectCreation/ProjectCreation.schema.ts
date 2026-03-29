@@ -1,5 +1,6 @@
 import { DEFAULT_MINIMUM_PASSWORD_STRENGTH } from 'lib/constants'
 import { z } from 'zod'
+import { isSupabaseSourceUrl } from './ProjectImport.utils'
 
 export const FormSchema = z
   .object({
@@ -36,13 +37,53 @@ export const FormSchema = z
     enableRlsEventTrigger: z.boolean(),
     postgresVersionSelection: z.string(),
     useOrioleDb: z.boolean(),
+    setupMode: z.enum(['blank', 'import']).default('blank'),
+    sourceUrl: z.string().default(''),
+    serviceRoleKey: z.string().default(''),
+    importDbConnectionString: z.string().default(''),
+    managementApiToken: z.string().default(''),
   })
-  .superRefine(({ dbPassStrength, dbPassStrengthWarning }, ctx) => {
-    if (dbPassStrength < DEFAULT_MINIMUM_PASSWORD_STRENGTH) {
+  .superRefine(({ dbPassStrength, dbPassStrengthWarning, setupMode }, ctx) => {
+    if (setupMode === 'blank' && dbPassStrength < DEFAULT_MINIMUM_PASSWORD_STRENGTH) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['dbPass'],
         message: dbPassStrengthWarning || 'Password not secure enough',
+      })
+    }
+  })
+  .superRefine((values, ctx) => {
+    if (values.setupMode !== 'import') return
+
+    if (!isSupabaseSourceUrl(values.sourceUrl)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['sourceUrl'],
+        message: 'Source URL must be a valid Supabase project URL.',
+      })
+    }
+
+    if (values.serviceRoleKey.trim().length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['serviceRoleKey'],
+        message: 'Service role key is required.',
+      })
+    }
+
+    if (values.importDbConnectionString.trim().length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['importDbConnectionString'],
+        message: 'DB connection string is required.',
+      })
+    }
+
+    if (values.managementApiToken.trim().length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['managementApiToken'],
+        message: 'Management API token is required.',
       })
     }
   })

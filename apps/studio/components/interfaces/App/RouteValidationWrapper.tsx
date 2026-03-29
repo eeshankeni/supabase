@@ -29,7 +29,7 @@ export const RouteValidationWrapper = ({ children }: PropsWithChildren<{}>) => {
     ? !!lastVisitedOrganization
       ? `/org/${lastVisitedOrganization}`
       : '/organizations'
-    : '/project/default'
+    : '/setup'
 
   /**
    * Array of urls/routes that should be ignored
@@ -55,13 +55,13 @@ export const RouteValidationWrapper = ({ children }: PropsWithChildren<{}>) => {
   const { isError: isErrorProject, error: projectError } = useProjectDetailQuery({ ref })
 
   const { data: organizations, isSuccess: orgsInitialized } = useOrganizationsQuery({
-    enabled: isLoggedIn,
+    enabled: isLoggedIn || !IS_PLATFORM,
   })
   const organizationsRef = useLatest(organizations)
 
   useEffect(() => {
     // check if current route is excempted from route validation check
-    if (isExceptUrl() || !isLoggedIn) return
+    if (isExceptUrl() || (IS_PLATFORM && !isLoggedIn)) return
 
     if (orgsInitialized && slug) {
       // Check validity of organization that user is trying to access
@@ -78,7 +78,7 @@ export const RouteValidationWrapper = ({ children }: PropsWithChildren<{}>) => {
 
   useEffect(() => {
     // check if current route is excempted from route validation check
-    if (isExceptUrl() || !isLoggedIn) return
+    if (isExceptUrl() || (IS_PLATFORM && !isLoggedIn)) return
 
     // A successful request to project details will validate access to both project and branches
     if (!!ref && isErrorProject) {

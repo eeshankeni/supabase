@@ -13,6 +13,7 @@ import { useSendEventMutation } from 'data/telemetry/send-event-mutation'
 import type { ResponseError } from 'types'
 import { useSignOut } from './auth'
 import { getGitHubProfileImgUrl } from './github'
+import { IS_PLATFORM } from './constants'
 
 export type ProfileContextType = {
   profile: Profile | undefined
@@ -76,7 +77,7 @@ export const ProfileProvider = ({ children }: PropsWithChildren<{}>) => {
     isError,
     isSuccess,
   } = useProfileQuery({
-    enabled: isLoggedIn,
+    enabled: isLoggedIn || !IS_PLATFORM,
   })
 
   useEffect(() => {
@@ -95,7 +96,9 @@ export const ProfileProvider = ({ children }: PropsWithChildren<{}>) => {
     }
   }, [error, signOut, router, createProfile, isError])
 
-  const { isInitialLoading: isLoadingPermissions } = usePermissionsQuery({ enabled: isLoggedIn })
+  const { isInitialLoading: isLoadingPermissions } = usePermissionsQuery({
+    enabled: IS_PLATFORM && isLoggedIn,
+  })
 
   const value = useMemo(() => {
     const isLoading = isLoadingProfile || isCreatingProfile || isLoadingPermissions

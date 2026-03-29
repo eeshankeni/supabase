@@ -45,6 +45,7 @@ export const ProjectCreationFooter = ({
   const isFreePlan = currentOrg?.plan?.id === 'free'
 
   const projectCreationDisabled = useFlag('disableProjectCreationAndUpdate')
+  const setupMode = form.watch('setupMode')
 
   const [lastVisitedOrganization] = useLocalStorageQuery(
     LOCAL_STORAGE_KEYS.LAST_VISITED_ORGANIZATION,
@@ -75,6 +76,7 @@ export const ProjectCreationFooter = ({
         {!isFreePlan &&
           !projectCreationDisabled &&
           canCreateProject &&
+          setupMode === 'blank' &&
           additionalMonthlySpend > 0 && (
             <div className="flex justify-between text-sm">
               <span>Additional costs</span>
@@ -187,7 +189,7 @@ export const ProjectCreationFooter = ({
           loading={isCreatingNewProject || isSuccessNewProject}
           disabled={!canCreateProject}
         >
-          Create new project
+          {setupMode === 'import' ? 'Start project import' : 'Create new project'}
         </Button>
       </div>
     </div>
